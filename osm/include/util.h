@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <mutex>
 
+namespace finedex{
 
 #define NS_PER_S 1000000000.0
 #define TIMER_DECLARE(n) struct timespec b##n,e##n
@@ -465,5 +466,6 @@ struct AtomicVal {
 };
 
 
+}
 
 #endif
