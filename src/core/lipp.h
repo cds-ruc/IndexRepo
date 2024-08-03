@@ -294,13 +294,6 @@ public:
         printf("max_depth = %d, avg_depth = %.2lf\n", max_depth, double(sum_depth) / double(sum_nodes));
     }
     void print_depth_stats(std::string str) const {
-        std::ofstream out_key_depth("lipp_" + str + "_key_depth_stats.log");
-        if (!out_key_depth.is_open()) {
-            std::cerr << "Failed to open file." << std::endl;
-            return ;
-        }
-        out_key_depth << "key,depth" << std::endl;
-
         if (root == nullptr) {
             return ;
         }
@@ -311,8 +304,6 @@ public:
         s.push(root);
         d.push(1);
 
-        int max_depth = 1;
-        size_t sum_depth = 0, sum_keys = 0;
         while (!s.empty()) {
             Node* node = s.top(); s.pop();
             int depth = d.top(); d.pop();
@@ -321,30 +312,16 @@ public:
                     s.push(node->items[i].comp.child);
                     d.push(depth + 1);
                 } else if (BITMAP_GET(node->none_bitmap, i) != 1) {
-                    max_depth = std::max(max_depth, depth);
-                    sum_depth += depth;
-                    sum_keys ++;
                     if (depth_distribution.size() <= depth) {
                         depth_distribution.resize(depth + 1, 0);
                     }
                     depth_distribution[depth] ++;
-                    out_key_depth << node->items[i].comp.data.key << "," << depth << std::endl;
                 }
             }
         }
 
-        out_key_depth.close();
-
-        double avg_depth = double(sum_depth) / double(sum_keys);
-        double variance = 0;
-        for (size_t i = 1; i < depth_distribution.size(); i ++) {
-            variance += depth_distribution[i] * (i - avg_depth) * (i - avg_depth);
-        }
-        variance /= sum_keys;
-
         std::ofstream out_depth_dist("lipp_" + str + "_depth_distribution.log");
-        std::ofstream out_depth_stats("lipp_" + str + "_depth_stats.log");
-        if (!out_depth_dist.is_open() || !out_depth_stats.is_open()) {
+        if (!out_depth_dist.is_open()) {
             std::cerr << "Failed to open file." << std::endl;
             return ;
         }
@@ -352,13 +329,7 @@ public:
         for (size_t i = 1; i < depth_distribution.size(); i ++) {
             out_depth_dist << i << "," << depth_distribution[i] << std::endl;
         }
-        out_depth_stats << "sum_keys = " << sum_keys << std::endl;
-        out_depth_stats << "max_depth = " << max_depth << std::endl;
-        out_depth_stats << "avg_depth = " << avg_depth << std::endl;
-        out_depth_stats << "variance = " << variance << std::endl;
-        out_depth_stats << "standard = " << sqrt(variance) << std::endl;
         out_depth_dist.close();
-        out_depth_stats.close();
         return ;
     }
     void print_model_stats(std::string str) {
