@@ -533,13 +533,6 @@ public:
                     out_file << 0 << "," << 0 << "," << depth << std::endl;
                 }
             }
-            
-            if (s.empty() || d.front() == depth + 1) {
-                T* keys = new T[root->size];
-                get_subtree_keys(root, keys);
-                out_file << keys[root->size - 1] << "," << 0 << "," << depth << std::endl;
-                delete []keys;
-            }
         }
 
         out_file.close();
