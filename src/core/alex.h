@@ -2572,15 +2572,9 @@ class Alex {
             out_file << min_key << "," << size << "," << depth << std::endl;
           }
         }
-        if (node_queue.empty() || depth == depth_queue.front() - 1) { // cur level's last inner node
-          out_file << get_max_key() << "," << 0 << "," << depth << std::endl;
-        }
       } else {  // leaf node
         auto node = static_cast<data_node_type*>(cur);
         out_file << node->first_key() << "," << node->num_keys_ << ","  << depth << std::endl;
-        if (node_queue.empty() || depth == depth_queue.front() - 1) { // cur level's last leaf node
-          out_file << get_max_key() << "," << 0 << "," << depth << std::endl;
-        }
       }
     }
     
