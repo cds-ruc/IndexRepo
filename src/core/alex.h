@@ -2405,21 +2405,11 @@ class Alex {
 
   // Print depth distribution stats
   void print_depth_stats(std::string s) const {
-    std::ofstream out_key_depth("alex_" + s + "_key_depth_stats.log");
-    if (!out_key_depth.is_open()) {
-        std::cerr << "Failed to open file." << std::endl;
-        return ;
-    }
-    out_key_depth << "key,depth" << std::endl;
-
     if (root_node_ == nullptr) {
       return ;
     }
     
     std::vector<size_t> depth_distribution;
-    size_t sum_depth = 0, sum_keys = 0;
-    int max_depth = 1;
-
     std::stack<AlexNode<T, P>*> node_stack;
     std::stack<int> d;
     AlexNode<T, P>* cur;
@@ -2446,37 +2436,17 @@ class Alex {
       } else {  // leaf node
         auto node = static_cast<data_node_type*>(cur);
         // auto node_level = node->level_ + 1;   // level starts from 0 (root)
-        // assert(node_level == depth);          // bug here: assert may be false
+        // assert(node_level == depth);
         auto node_level = depth;
-        max_depth = std::max(max_depth, node_level);
-        sum_depth += node_level * node->num_keys_;
-        sum_keys += node->num_keys_;
         if (depth_distribution.size() <= node_level) {
           depth_distribution.resize(node_level + 1, 0);
         }
         depth_distribution[node_level] += node->num_keys_;
-
-        int idx = node->find_lower(0);
-        Iterator it(node, idx);
-        while (it.cur_leaf_ == node) {
-          out_key_depth << it.key() << "," << node_level << std::endl;
-          it++;
-        }
       }
     }
 
-    out_key_depth.close();
-
-    double avg_depth = double(sum_depth) / double(sum_keys);
-    double variance = 0;
-    for (size_t i = 1; i < depth_distribution.size(); i ++) {
-        variance += depth_distribution[i] * (i - avg_depth) * (i - avg_depth);
-    }
-    variance /= sum_keys;
-
     std::ofstream out_dist("alex_" + s + "_depth_distribution.log");
-    std::ofstream out_stats("alex_" + s + "_depth_stats.log");
-    if (!out_dist.is_open() || !out_stats.is_open()) {
+    if (!out_dist.is_open()) {
         std::cerr << "Failed to open file." << std::endl;
         return ;
     }
@@ -2484,13 +2454,7 @@ class Alex {
     for (size_t i = 1; i < depth_distribution.size(); i ++) {
         out_dist << i << "," << depth_distribution[i] << std::endl;
     }
-    out_stats << "sum_keys = " << sum_keys << std::endl;
-    out_stats << "max_depth = " << max_depth << std::endl;
-    out_stats << "avg_depth = " << avg_depth << std::endl;
-    out_stats << "variance = " << variance << std::endl;
-    out_stats << "standard = " << sqrt(variance) << std::endl;
     out_dist.close();
-    out_stats.close();
   }
 
   void print_model_stats(std::string s) const {
