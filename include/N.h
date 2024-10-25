@@ -2,17 +2,20 @@
 // Created by florian on 05.08.15.
 //
 
-#ifndef ARTVERSION1_ART_N_H
-#define ARTVERSION1_ART_N_H
+#ifndef ART_OPTIMISTIC_LOCK_COUPLING_N_H
+#define ART_OPTIMISTIC_LOCK_COUPLING_N_H
 //#define ART_NOREADLOCK
 //#define ART_NOWRITELOCK
 #include <stdint.h>
+#include <atomic>
 #include <string.h>
-#include <tbb/tbb.h>
+#include "Key.h"
+#include "Epoche.h"
 
 using TID = uint64_t;
 
-namespace ART_unsynchronized {
+using namespace ART;
+namespace ART_OLC {
 /*
  * SynchronizedTree
  * LockCouplingTree
@@ -27,7 +30,8 @@ namespace ART_unsynchronized {
         N256 = 3
     };
 
-    static constexpr uint32_t maxStoredPrefixLength = 10;
+    static constexpr uint32_t
+    maxStoredPrefixLength = 11;
 
     using Prefix = uint8_t[maxStoredPrefixLength];
 
@@ -42,17 +46,18 @@ namespace ART_unsynchronized {
 
         N(N &&) = delete;
 
+        //2b type 60b version 1b lock 1b obsolete
+        std::atomic <uint64_t> typeVersionLockObsolete{0b100};
         // version 1, unlocked, not obsolete
         uint32_t prefixCount = 0;
 
-        NTypes type;
-    public:
         uint8_t count = 0;
-    protected:
         Prefix prefix;
 
 
         void setType(NTypes type);
+
+        static uint64_t convertTypeToVersion(NTypes type);
 
     public:
 
@@ -60,13 +65,44 @@ namespace ART_unsynchronized {
 
         uint32_t getCount() const;
 
-        static N *getChild(const uint8_t k, N *node);
+        bool isLocked(uint64_t version) const;
 
-        static void insertA(N *node, N *parentNode, uint8_t keyParent, uint8_t key, N *val);
+        void writeLockOrRestart(bool &needRestart);
 
-        static void change(N *node, uint8_t key, N *val);
+        void upgradeToWriteLockOrRestart(uint64_t &version, bool &needRestart);
 
-        static void removeA(N *node, uint8_t key, N *parentNode, uint8_t keyParent);
+        void writeUnlock();
+
+        uint64_t readLockOrRestart(bool &needRestart) const;
+
+        /**
+         * returns true if node hasn't been changed in between
+         */
+        void checkOrRestart(uint64_t startRead, bool &needRestart) const;
+
+        void readUnlockOrRestart(uint64_t startRead, bool &needRestart) const;
+
+        static bool isObsolete(uint64_t version);
+
+        /**
+         * can only be called when node is locked
+         */
+        void writeUnlockObsolete() {
+            typeVersionLockObsolete.fetch_add(0b11);
+        }
+
+        static N *getChild(const uint8_t k, const N *node);
+
+        static void
+        insertAndUnlock(N *node, uint64_t v, N *parentNode, uint64_t parentVersion, uint8_t keyParent, uint8_t key,
+                        N *val, bool &needRestart,
+                        ThreadInfo &threadInfo);
+
+        static bool change(N *node, uint8_t key, N *val);
+
+        static void
+        removeAndUnlock(N *node, uint64_t v, uint8_t key, N *parentNode, uint64_t parentVersion, uint8_t keyParent,
+                        bool &needRestart, ThreadInfo &threadInfo);
 
         bool hasPrefix() const;
 
@@ -86,7 +122,7 @@ namespace ART_unsynchronized {
 
         static N *getAnyChild(const N *n);
 
-        static TID getAnyChildTid(N *n);
+        static TID getAnyChildTid(const N *n, bool &needRestart);
 
         static void deleteChildren(N *node);
 
@@ -95,53 +131,51 @@ namespace ART_unsynchronized {
         static std::tuple<N *, uint8_t> getSecondChild(N *node, const uint8_t k);
 
         template<typename curN, typename biggerN>
-        static void insertGrow(curN *n, N *parentNode, uint8_t keyParent, uint8_t key, N *val);
+        static void
+        insertGrow(curN *n, uint64_t v, N *parentNode, uint64_t parentVersion, uint8_t keyParent, uint8_t key, N *val,
+                   bool &needRestart, ThreadInfo &threadInfo);
 
         template<typename curN, typename smallerN>
-        static void removeAndShrink(curN *n, N *parentNode, uint8_t keyParent, uint8_t key);
+        static void
+        removeAndShrink(curN *n, uint64_t v, N *parentNode, uint64_t parentVersion, uint8_t keyParent, uint8_t key,
+                        bool &needRestart, ThreadInfo &threadInfo);
 
-        static void getChildren(const N *node, uint8_t start, uint8_t end, std::tuple<uint8_t, N *> children[],
-                                uint32_t &childrenCount);
-
-        static long size(N *node);
-
-        static void collect_stats(N *node, size_t depth, std::vector<size_t> &depth_distribution, std::vector<size_t> &type_distribution);
+        static uint64_t getChildren(const N *node, uint8_t start, uint8_t end, std::tuple<uint8_t, N *> children[],
+                                    uint32_t &childrenCount);
     };
 
     class N4 : public N {
     public:
-        //TODO
-        //atomic??
         uint8_t keys[4];
         N *children[4] = {nullptr, nullptr, nullptr, nullptr};
 
     public:
         N4(const uint8_t *prefix, uint32_t prefixLength) : N(NTypes::N4, prefix,
-                                                                             prefixLength) { }
+                                                             prefixLength) {}
 
-        bool insert(uint8_t key, N *n);
+        void insert(uint8_t key, N *n);
 
         template<class NODE>
         void copyTo(NODE *n) const;
 
-        void change(uint8_t key, N *val);
+        bool change(uint8_t key, N *val);
 
         N *getChild(const uint8_t k) const;
 
-        N *get_child(uint8_t idx) const;
-
-        bool remove(uint8_t k, bool force);
+        void remove(uint8_t k);
 
         N *getAnyChild() const;
+
+        bool isFull() const;
+
+        bool isUnderfull() const;
 
         std::tuple<N *, uint8_t> getSecondChild(const uint8_t key) const;
 
         void deleteChildren();
 
-        void getChildren(uint8_t start, uint8_t end, std::tuple<uint8_t, N *> *&children,
-                         uint32_t &childrenCount) const;
-
-        long size();
+        uint64_t getChildren(uint8_t start, uint8_t end, std::tuple<uint8_t, N *> *&children,
+                             uint32_t &childrenCount) const;
     };
 
     class N16 : public N {
@@ -160,11 +194,20 @@ namespace ART_unsynchronized {
             return __builtin_ctz(x);
 #else
             // Adapted from Hacker's Delight
-   unsigned n=1;
-   if ((x&0xFF)==0) {n+=8; x=x>>8;}
-   if ((x&0x0F)==0) {n+=4; x=x>>4;}
-   if ((x&0x03)==0) {n+=2; x=x>>2;}
-   return n-(x&1);
+            unsigned n = 1;
+            if ((x & 0xFF) == 0) {
+                n += 8;
+                x = x >> 8;
+            }
+            if ((x & 0x0F) == 0) {
+                n += 4;
+                x = x >> 4;
+            }
+            if ((x & 0x03) == 0) {
+                n += 2;
+                x = x >> 2;
+            }
+            return n - (x & 1);
 #endif
         }
 
@@ -172,32 +215,32 @@ namespace ART_unsynchronized {
 
     public:
         N16(const uint8_t *prefix, uint32_t prefixLength) : N(NTypes::N16, prefix,
-                                                                              prefixLength) {
+                                                              prefixLength) {
             memset(keys, 0, sizeof(keys));
             memset(children, 0, sizeof(children));
         }
 
-        bool insert(uint8_t key, N *n);
+        void insert(uint8_t key, N *n);
 
         template<class NODE>
         void copyTo(NODE *n) const;
 
-        void change(uint8_t key, N *val);
+        bool change(uint8_t key, N *val);
 
         N *getChild(const uint8_t k) const;
 
-        N *get_child(uint8_t idx) const;
-
-        bool remove(uint8_t k, bool force);
+        void remove(uint8_t k);
 
         N *getAnyChild() const;
 
+        bool isFull() const;
+
+        bool isUnderfull() const;
+
         void deleteChildren();
 
-        void getChildren(uint8_t start, uint8_t end, std::tuple<uint8_t, N *> *&children,
-                         uint32_t &childrenCount) const;
-
-        long size();
+        uint64_t getChildren(uint8_t start, uint8_t end, std::tuple<uint8_t, N *> *&children,
+                             uint32_t &childrenCount) const;
     };
 
     class N48 : public N {
@@ -207,32 +250,32 @@ namespace ART_unsynchronized {
         static const uint8_t emptyMarker = 48;
 
         N48(const uint8_t *prefix, uint32_t prefixLength) : N(NTypes::N48, prefix,
-                                                                              prefixLength) {
+                                                              prefixLength) {
             memset(childIndex, emptyMarker, sizeof(childIndex));
             memset(children, 0, sizeof(children));
         }
 
-        bool insert(uint8_t key, N *n);
+        void insert(uint8_t key, N *n);
 
         template<class NODE>
         void copyTo(NODE *n) const;
 
-        void change(uint8_t key, N *val);
+        bool change(uint8_t key, N *val);
 
         N *getChild(const uint8_t k) const;
 
-        N *get_child(uint8_t idx) const;
-
-        bool remove(uint8_t k, bool force);
+        void remove(uint8_t k);
 
         N *getAnyChild() const;
 
+        bool isFull() const;
+
+        bool isUnderfull() const;
+
         void deleteChildren();
 
-        void getChildren(uint8_t start, uint8_t end, std::tuple<uint8_t, N *> *&children,
-                         uint32_t &childrenCount) const;
-
-        long size();
+        uint64_t getChildren(uint8_t start, uint8_t end, std::tuple<uint8_t, N *> *&children,
+                             uint32_t &childrenCount) const;
     };
 
     class N256 : public N {
@@ -240,31 +283,33 @@ namespace ART_unsynchronized {
 
     public:
         N256(const uint8_t *prefix, uint32_t prefixLength) : N(NTypes::N256, prefix,
-                                                                               prefixLength) {
-            memset(children, 0, sizeof(children));
+                                                               prefixLength) {
+            memset(children, '\0', sizeof(children));
         }
 
-        bool insert(uint8_t key, N *val);
+        void insert(uint8_t key, N *val);
 
         template<class NODE>
         void copyTo(NODE *n) const;
 
-        void change(uint8_t key, N *n);
+        bool change(uint8_t key, N *n);
 
         N *getChild(const uint8_t k) const;
 
-        N *get_child(uint8_t idx) const;
-
-        bool remove(uint8_t k, bool force);
+        void remove(uint8_t k);
 
         N *getAnyChild() const;
 
+        bool isFull() const;
+
+        bool isUnderfull() const;
+
         void deleteChildren();
 
-        void getChildren(uint8_t start, uint8_t end, std::tuple<uint8_t, N *> *&children,
-                         uint32_t &childrenCount) const;
-
-        long size();
+        uint64_t getChildren(uint8_t start, uint8_t end, std::tuple<uint8_t, N *> *&children,
+                             uint32_t &childrenCount) const;
     };
 }
-#endif //ARTVERSION1_ARTVERSION_H
+
+
+#endif //ART_OPTIMISTIC_LOCK_COUPLING_N_H

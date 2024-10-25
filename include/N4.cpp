@@ -2,26 +2,44 @@
 #include <algorithm>
 #include "N.h"
 
-namespace ART_unsynchronized {
+namespace ART_OLC {
 
     void N4::deleteChildren() {
-        for (uint32_t i = 0; i < 4; ++i) {
-            if (children[i] != nullptr) {
-                N::deleteChildren(children[i]);
-                N::deleteNode(children[i]);
-            }
+        for (uint32_t i = 0; i < count; ++i) {
+            N::deleteChildren(children[i]);
+            N::deleteNode(children[i]);
         }
     }
 
-    bool N4::insert(uint8_t key, N *n) {
-        if (count == 4) {
-            return false;
+    bool N4::isFull() const {
+        return count == 4;
+    }
+
+    bool N4::isUnderfull() const {
+        return false;
+    }
+
+    void N4::insert(uint8_t key, N *n) {
+        unsigned pos;
+        for (pos = 0; (pos < count) && (keys[pos] < key); pos++);
+        memmove(keys + pos + 1, keys + pos, count - pos);
+        memmove(children + pos + 1, children + pos, (count - pos) * sizeof(N*));
+        keys[pos] = key;
+        children[pos] = n;
+        count++;
+    }
+
+    template<class NODE>
+    void N4::copyTo(NODE *n) const {
+        for (uint32_t i = 0; i < count; ++i) {
+            n->insert(keys[i], children[i]);
         }
-        for (uint32_t i = 0; i < 4; ++i) {
-            if (children[i] == nullptr) {
-                keys[i] = key;
-                children[i] = n;
-                count++;
+    }
+
+    bool N4::change(uint8_t key, N *val) {
+        for (uint32_t i = 0; i < count; ++i) {
+            if (keys[i] == key) {
+                children[i] = val;
                 return true;
             }
         }
@@ -29,94 +47,63 @@ namespace ART_unsynchronized {
         __builtin_unreachable();
     }
 
-    template<class NODE>
-    void N4::copyTo(NODE *n) const {
-        for (uint32_t i = 0; i < 4; ++i) {
-            n->insert(keys[i], children[i]);
-        }
-    }
-
-    void N4::change(uint8_t key, N *val) {
-        for (uint32_t i = 0; i < 4; ++i) {
-            if (children[i] != nullptr && keys[i] == key) {
-                children[i] = val;
-                return;
-            }
-        }
-    }
-
     N *N4::getChild(const uint8_t k) const {
-        for (uint32_t i = 0; i < 4; ++i) {
-            if (children[i] != nullptr && keys[i] == k) {
+        for (uint32_t i = 0; i < count; ++i) {
+            if (keys[i] == k) {
                 return children[i];
             }
         }
         return nullptr;
     }
 
-    N *N4::get_child(uint8_t idx) const {
-        return children[idx];
-    }
-
-    bool N4::remove(uint8_t k, bool /*force*/) {
-        for (uint32_t i = 0; i < 4; ++i) {
-            if (children[i] != nullptr && keys[i] == k) {
+    void N4::remove(uint8_t k) {
+        for (uint32_t i = 0; i < count; ++i) {
+            if (keys[i] == k) {
+                memmove(keys + i, keys + i + 1, count - i - 1);
+                memmove(children + i, children + i + 1, (count - i - 1) * sizeof(N *));
                 count--;
-                children[i] = nullptr;
-                return true;
+                return;
             }
         }
-        assert(false);
-        __builtin_unreachable();
     }
 
     N *N4::getAnyChild() const {
-        N *anyChild;
-        for (uint32_t i = 0; i < 4; ++i) {
-            if (children[i] != nullptr) {
-                if (N::isLeaf(children[i])) {
-                    return children[i];
-                } else {
-                    anyChild = children[i];
-                }
+        N *anyChild = nullptr;
+        for (uint32_t i = 0; i < count; ++i) {
+            if (N::isLeaf(children[i])) {
+                return children[i];
+            } else {
+                anyChild = children[i];
             }
         }
         return anyChild;
     }
 
     std::tuple<N *, uint8_t> N4::getSecondChild(const uint8_t key) const {
-        for (uint32_t i = 0; i < 4; ++i) {
-            if (children[i] != nullptr && keys[i] != key) {
+        for (uint32_t i = 0; i < count; ++i) {
+            if (keys[i] != key) {
                 return std::make_tuple(children[i], keys[i]);
             }
         }
-        assert(false);
-        __builtin_unreachable();
+        return std::make_tuple(nullptr, 0);
     }
 
-    void N4::getChildren(uint8_t start, uint8_t end, std::tuple<uint8_t, N *> *&children,
-                         uint32_t &childrenCount) const{
-//TODO lock
+    uint64_t N4::getChildren(uint8_t start, uint8_t end, std::tuple<uint8_t, N *> *&children,
+                         uint32_t &childrenCount) const {
+        restart:
+        bool needRestart = false;
+        uint64_t v;
+        v = readLockOrRestart(needRestart);
+        if (needRestart) goto restart;
         childrenCount = 0;
-        for (uint32_t i = 0; i < 4; ++i) {
-            if (this->children[i] != nullptr && this->keys[i] >= start && this->keys[i] <= end) {
+        for (uint32_t i = 0; i < count; ++i) {
+            if (this->keys[i] >= start && this->keys[i] <= end) {
                 children[childrenCount] = std::make_tuple(this->keys[i], this->children[i]);
                 childrenCount++;
             }
         }
-        std::sort(children, children + childrenCount, [](auto first, auto second) {
-            return std::get<0>(first) < std::get<0>(second);
-        });
-    }
-
-    long N4::size() {
-        long size = 0;
-        for(int i = 0; i < 4; i++) {
-            size += N::size(children[i]);
-            size += sizeof(children[i]);
-            size += sizeof(keys[i]);
-        }
-        size += sizeof(children);
-        return size;
+        readUnlockOrRestart(v, needRestart);
+        if (needRestart) goto restart;
+        return v;
     }
 }

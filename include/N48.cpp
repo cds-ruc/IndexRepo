@@ -2,12 +2,17 @@
 #include <algorithm>
 #include "N.h"
 
-namespace ART_unsynchronized {
+namespace ART_OLC {
 
-    bool N48::insert(uint8_t key, N *n) {
-        if (count == 48) {
-            return false;
-        }
+    bool N48::isFull() const {
+        return count == 48;
+    }
+
+    bool N48::isUnderfull() const {
+        return count == 12;
+    }
+
+    void N48::insert(uint8_t key, N *n) {
         unsigned pos = count;
         if (children[pos]) {
             for (pos = 0; children[pos] != nullptr; pos++);
@@ -15,7 +20,6 @@ namespace ART_unsynchronized {
         children[pos] = n;
         childIndex[key] = (uint8_t) pos;
         count++;
-        return true;
     }
 
     template<class NODE>
@@ -27,8 +31,9 @@ namespace ART_unsynchronized {
         }
     }
 
-    void N48::change(uint8_t key, N *val) {
+    bool N48::change(uint8_t key, N *val) {
         children[childIndex[key]] = val;
+        return true;
     }
 
     N *N48::getChild(const uint8_t k) const {
@@ -39,20 +44,12 @@ namespace ART_unsynchronized {
         }
     }
 
-    N *N48::get_child(uint8_t idx) const {
-        return children[idx];
-    }
-
-    bool N48::remove(uint8_t k, bool force) {
-        if (count == 12 && !force) {
-            return false;
-        }
+    void N48::remove(uint8_t k) {
         assert(childIndex[k] != emptyMarker);
         children[childIndex[k]] = nullptr;
         childIndex[k] = emptyMarker;
         count--;
         assert(getChild(k) == nullptr);
-        return true;
     }
 
     N *N48::getAnyChild() const {
@@ -78,8 +75,13 @@ namespace ART_unsynchronized {
         }
     }
 
-    void N48::getChildren(uint8_t start, uint8_t end, std::tuple<uint8_t, N *> *&children,
+    uint64_t N48::getChildren(uint8_t start, uint8_t end, std::tuple<uint8_t, N *> *&children,
                           uint32_t &childrenCount) const {
+        restart:
+        bool needRestart = false;
+        uint64_t v;
+        v = readLockOrRestart(needRestart);
+        if (needRestart) goto restart;
         childrenCount = 0;
         for (unsigned i = start; i <= end; i++) {
             if (this->childIndex[i] != emptyMarker) {
@@ -87,19 +89,8 @@ namespace ART_unsynchronized {
                 childrenCount++;
             }
         }
-    }
-
-    long N48::size() {
-        long size = 0;
-        for(int i = 0; i < 48; i++) {
-            size += N::size(children[i]);
-            size += sizeof(children[i]);
-        }
-        for(int i = 0; i < 256; i++) {
-            size += sizeof(childIndex[i]);
-        }
-        size += sizeof(children);
-        size += sizeof(childIndex);
-        return size;
+        readUnlockOrRestart(v, needRestart);
+        if (needRestart) goto restart;
+        return v;
     }
 }

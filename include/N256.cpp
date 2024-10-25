@@ -1,8 +1,17 @@
 #include <assert.h>
 #include <algorithm>
 #include "N.h"
+#include "Epoche.h"
 
-namespace ART_unsynchronized {
+namespace ART_OLC {
+
+    bool N256::isFull() const {
+        return false;
+    }
+
+    bool N256::isUnderfull() const {
+        return count == 37;
+    }
 
     void N256::deleteChildren() {
         for (uint64_t i = 0; i < 256; ++i) {
@@ -13,10 +22,9 @@ namespace ART_unsynchronized {
         }
     }
 
-    bool N256::insert(uint8_t key, N *val) {
+    void N256::insert(uint8_t key, N *val) {
         children[key] = val;
         count++;
-        return true;
     }
 
     template<class NODE>
@@ -28,25 +36,18 @@ namespace ART_unsynchronized {
         }
     }
 
-    void N256::change(uint8_t key, N *n) {
+    bool N256::change(uint8_t key, N *n) {
         children[key] = n;
+        return true;
     }
 
     N *N256::getChild(const uint8_t k) const {
         return children[k];
     }
 
-    N *N256::get_child(uint8_t idx) const {
-        return children[idx];
-    }
-
-    bool N256::remove(uint8_t k, bool force) {
-        if (count == 37 && !force) {
-            return false;
-        }
+    void N256::remove(uint8_t k) {
         children[k] = nullptr;
         count--;
-        return true;
     }
 
     N *N256::getAnyChild() const {
@@ -63,8 +64,13 @@ namespace ART_unsynchronized {
         return anyChild;
     }
 
-    void N256::getChildren(uint8_t start, uint8_t end, std::tuple<uint8_t, N *> *&children,
+    uint64_t N256::getChildren(uint8_t start, uint8_t end, std::tuple<uint8_t, N *> *&children,
                            uint32_t &childrenCount) const {
+        restart:
+        bool needRestart = false;
+        uint64_t v;
+        v = readLockOrRestart(needRestart);
+        if (needRestart) goto restart;
         childrenCount = 0;
         for (unsigned i = start; i <= end; i++) {
             if (this->children[i] != nullptr) {
@@ -72,15 +78,8 @@ namespace ART_unsynchronized {
                 childrenCount++;
             }
         }
-    }
-
-    long N256::size() {
-        long size = 0;
-        for(int i = 0; i < 256; i++) {
-            size += N::size(children[i]);
-            size += sizeof(children[i]);
-        }
-        size += sizeof(children);
-        return size;
+        readUnlockOrRestart(v, needRestart);
+        if (needRestart) goto restart;
+        return v;
     }
 }
