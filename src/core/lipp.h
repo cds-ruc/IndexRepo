@@ -184,7 +184,7 @@ public:
     }
 
     bool remove(const T &key) {
-        constexpr int MAX_DEPTH = 128;
+        constexpr int MAX_DEPTH = 512;
         Node *path[MAX_DEPTH];
         int path_size = 0;
         Node *parent = nullptr;
