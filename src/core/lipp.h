@@ -393,7 +393,7 @@ public:
       yield(restartCount);
     bool needRestart = false;
 
-    constexpr int MAX_DEPTH = 128;
+    constexpr int MAX_DEPTH = 512;
     Node *path[MAX_DEPTH];
     int path_size = 0;
 
@@ -1083,7 +1083,7 @@ private:
       yield(restartCount);
     bool needRestart = false;
 
-    constexpr int MAX_DEPTH = 128;
+    constexpr int MAX_DEPTH = 512;
     Node *path[MAX_DEPTH];
     int path_size = 0;
     int insert_to_data = 0;
