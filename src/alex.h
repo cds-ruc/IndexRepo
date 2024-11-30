@@ -1688,8 +1688,8 @@ public:
           }
         }
 
-        std::cout << "This should not occur in locking parent......."
-                  << std::endl;
+        // std::cout << "This should not occur in locking parent......."
+        //           << std::endl;
         return false;
       }
     }
@@ -2393,7 +2393,9 @@ stop_cost =
   // If the root node is at the max node size, then we split the root and create
   // a new root node.
   void expand_root(T key, bool expand_left) {
-    std::cout << "Expanding the root" << std::endl;
+    if (verbose) {
+      std::cout << "Expanding the root" << std::endl;
+    }
     auto root = static_cast<model_node_type *>(root_node_);
 
     // Find the new bounds of the key domain.
