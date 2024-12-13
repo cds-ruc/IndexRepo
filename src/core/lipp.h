@@ -72,6 +72,12 @@ class LIPP
         double time_scan_and_destory_tree = 0;
         double time_build_tree_bulk = 0;
         #endif
+        #ifdef PROFILING
+        int num_rebuilds = 0;
+        #endif
+        #ifdef ROOT_PROFILING
+        int num_inserts = 0;
+        #endif
     } stats;
 
 public:
@@ -108,8 +114,28 @@ public:
         return insert(v.first, v.second);
     }
     bool insert(const T& key, const P& value) {
+#ifdef ROOT_PROFILING
+        Node* last_root = root;
+#endif
         bool ok = true;
         root = insert_tree(root, key, value, &ok);
+#ifdef ROOT_PROFILING
+        if (ok) {
+            stats.num_inserts ++;
+        }
+        Node* cur_root = root;
+        if (cur_root != last_root) {
+        std::ifstream in("lipp_insert_root.log");
+        if (!in.is_open()) {
+            std::ofstream out("lipp_insert_root.log");
+            out << "num_inserts,model_slope,model_intercept" << std::endl;
+        }
+        std::ofstream out("lipp_insert_root.log", std::ios::app);
+        out << stats.num_inserts << "," 
+            << cur_root->model.a << ","
+            << cur_root->model.b << std::endl;
+        }
+#endif
         return ok;
     }
     P at(const T& key, bool skip_existence_check, bool& exist) const {
@@ -507,6 +533,15 @@ public:
         }
 
         out_file.close();
+    }
+    void print_smo_stats(std::string s) {
+        std::ofstream out("lipp_" + s + "_smo_stats.log");
+        if (!out.is_open()) {
+            std::cerr << "Failed to open file." << std::endl;
+            return;
+        }
+        out << "smo,count" << std::endl;
+        out << "num_rebuilds" << "," << stats.num_rebuilds << std::endl;
     }
     void verify() const {
         std::stack<Node*> s;
@@ -1122,6 +1157,9 @@ private:
             const bool need_rebuild = node->fixed == 0 && node->size >= node->build_size * 2 && node->size >= 64 && num_insert_to_data * 10 >= num_inserts;
 
             if (need_rebuild) {
+                #ifdef PROFILING
+                stats.num_rebuilds++;
+                #endif
                 const int ESIZE = node->size;
                 T* keys = new T[ESIZE];
                 P* values = new P[ESIZE];
