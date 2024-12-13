@@ -1141,6 +1141,9 @@ class Alex {
   // Insert does not happen if duplicates are not allowed and duplicate is
   // found.
   std::pair<Iterator, bool> insert(const T& key, const P& payload) {
+#ifdef ROOT_PROFILING
+    AlexNode<T, P>* last_root = root_node_;
+#endif
     // If enough keys fall outside the key domain, expand the root to expand the
     // key domain
     if (key > istats_.key_domain_max_) {
@@ -1267,6 +1270,20 @@ class Alex {
     }
     stats_.num_inserts++;
     stats_.num_keys++;
+#ifdef ROOT_PROFILING
+    AlexNode<T, P>* cur_root = root_node_;
+    if (cur_root != last_root) {
+      std::ifstream in("alex_insert_root.log");
+      if (!in.is_open()) {
+        std::ofstream out("alex_insert_root.log");
+        out << "num_inserts,model_slope,model_intercept" << std::endl;
+      }
+      std::ofstream out("alex_insert_root.log", std::ios::app);
+      out << stats_.num_inserts << "," 
+          << cur_root->model_.a_ << ","
+          << cur_root->model_.b_ << std::endl;
+    }
+#endif
     return {Iterator(leaf, insert_pos), true};
   }
 
