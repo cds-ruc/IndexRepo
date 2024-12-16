@@ -207,6 +207,21 @@ public:
         root = build_tree_bulk(keys, values, num_keys);
         delete[] keys;
         delete[] values;
+        
+        #ifdef ROOT_PROFILING
+        Node* cur_root = root;
+        if (cur_root != nullptr) {
+        std::ifstream in("lipp_insert_root.log");
+        if (!in.is_open()) {
+            std::ofstream out("lipp_insert_root.log");
+            out << "num_inserts,model_slope,model_intercept" << std::endl;
+        }
+        std::ofstream out("lipp_insert_root.log", std::ios::app);
+        out << stats.num_inserts << "," 
+            << cur_root->model.a << ","
+            << cur_root->model.b << std::endl;
+        }
+        #endif
     }
 
     bool remove(const T &key) {
