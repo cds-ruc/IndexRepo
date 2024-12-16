@@ -685,6 +685,21 @@ class Alex {
     create_superroot();
     update_superroot_key_domain();
     link_all_data_nodes();
+
+#ifdef ROOT_PROFILING
+    AlexNode<T, P>* cur_root = root_node_;
+    if (cur_root != nullptr) {
+      std::ifstream in("alex_insert_root.log");
+      if (!in.is_open()) {
+        std::ofstream out("alex_insert_root.log");
+        out << "num_inserts,model_slope,model_intercept" << std::endl;
+      }
+      std::ofstream out("alex_insert_root.log", std::ios::app);
+      out << stats_.num_inserts << "," 
+          << cur_root->model_.a_ << ","
+          << cur_root->model_.b_ << std::endl;
+    }
+#endif
   }
 
  private:
