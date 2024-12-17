@@ -128,12 +128,13 @@ public:
         std::ifstream in("lipp_insert_root.log");
         if (!in.is_open()) {
             std::ofstream out("lipp_insert_root.log");
-            out << "num_inserts,model_slope,model_intercept" << std::endl;
+            out << "num_inserts,model_slope,model_intercept,num_slots" << std::endl;
         }
         std::ofstream out("lipp_insert_root.log", std::ios::app);
         out << stats.num_inserts << "," 
             << cur_root->model.a << ","
-            << cur_root->model.b << std::endl;
+            << cur_root->model.b << ","
+            << cur_root->num_items << std::endl;
         }
 #endif
         return ok;
@@ -214,12 +215,13 @@ public:
         std::ifstream in("lipp_insert_root.log");
         if (!in.is_open()) {
             std::ofstream out("lipp_insert_root.log");
-            out << "num_inserts,model_slope,model_intercept" << std::endl;
+            out << "num_inserts,model_slope,model_intercept,num_slots" << std::endl;
         }
         std::ofstream out("lipp_insert_root.log", std::ios::app);
         out << stats.num_inserts << "," 
             << cur_root->model.a << ","
-            << cur_root->model.b << std::endl;
+            << cur_root->model.b << ","
+            << cur_root->num_items << std::endl;
         }
         #endif
     }
