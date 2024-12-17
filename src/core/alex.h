@@ -692,12 +692,13 @@ class Alex {
       std::ifstream in("alex_insert_root.log");
       if (!in.is_open()) {
         std::ofstream out("alex_insert_root.log");
-        out << "num_inserts,model_slope,model_intercept" << std::endl;
+        out << "num_inserts,model_slope,model_intercept,num_slots" << std::endl;
       }
       std::ofstream out("alex_insert_root.log", std::ios::app);
       out << stats_.num_inserts << "," 
           << cur_root->model_.a_ << ","
-          << cur_root->model_.b_ << std::endl;
+          << cur_root->model_.b_ << ","
+          << static_cast<model_node_type*>(cur_root)->num_children_ << std::endl;
     }
 #endif
   }
@@ -1291,12 +1292,13 @@ class Alex {
       std::ifstream in("alex_insert_root.log");
       if (!in.is_open()) {
         std::ofstream out("alex_insert_root.log");
-        out << "num_inserts,model_slope,model_intercept" << std::endl;
+        out << "num_inserts,model_slope,model_intercept,num_slots" << std::endl;
       }
       std::ofstream out("alex_insert_root.log", std::ios::app);
       out << stats_.num_inserts << "," 
           << cur_root->model_.a_ << ","
-          << cur_root->model_.b_ << std::endl;
+          << cur_root->model_.b_ << ","
+          << static_cast<model_node_type*>(cur_root)->num_children_ << std::endl;
     }
 #endif
     return {Iterator(leaf, insert_pos), true};
