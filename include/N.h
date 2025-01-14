@@ -142,6 +142,8 @@ namespace ART_OLC {
 
         static uint64_t getChildren(const N *node, uint8_t start, uint8_t end, std::tuple<uint8_t, N *> children[],
                                     uint32_t &childrenCount);
+
+        static long long size(N *node);
     };
 
     class N4 : public N {
@@ -176,6 +178,8 @@ namespace ART_OLC {
 
         uint64_t getChildren(uint8_t start, uint8_t end, std::tuple<uint8_t, N *> *&children,
                              uint32_t &childrenCount) const;
+        
+        long long size();
     };
 
     class N16 : public N {
@@ -241,6 +245,8 @@ namespace ART_OLC {
 
         uint64_t getChildren(uint8_t start, uint8_t end, std::tuple<uint8_t, N *> *&children,
                              uint32_t &childrenCount) const;
+        
+        long long size();
     };
 
     class N48 : public N {
@@ -276,6 +282,8 @@ namespace ART_OLC {
 
         uint64_t getChildren(uint8_t start, uint8_t end, std::tuple<uint8_t, N *> *&children,
                              uint32_t &childrenCount) const;
+        
+        long long size();
     };
 
     class N256 : public N {
@@ -308,6 +316,8 @@ namespace ART_OLC {
 
         uint64_t getChildren(uint8_t start, uint8_t end, std::tuple<uint8_t, N *> *&children,
                              uint32_t &childrenCount) const;
+       
+        long long size();
     };
 }
 

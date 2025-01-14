@@ -110,4 +110,15 @@ namespace ART_OLC {
         if (needRestart) goto restart;
         return v;
     }
+
+    long long N16::size() {
+        long long size = 0;
+        for(int i = 0; i < 16; i++) {
+            size += N::size(children[i]);
+            size += sizeof(children[i]);
+            size += sizeof(keys[i]);
+        }
+        size += sizeof(children);
+        return size;
+    }
 }

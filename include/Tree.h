@@ -79,7 +79,9 @@ namespace ART_OLC {
         bool update(const Key &k, TID tid, ThreadInfo &threadEpocheInfo);
 
         void remove(const Key &k, ThreadInfo &epocheInfo);
-
+        
+        long long size();
+        
         void clear_stat();
     };
 }

@@ -700,4 +700,9 @@ namespace ART_OLC {
         }
         return PCEqualsResults::BothMatch;
     }
+
+    long long Tree::size() {
+        auto size = N::size(root);
+        return size + sizeof(root);
+    }
 }

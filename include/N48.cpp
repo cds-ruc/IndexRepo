@@ -93,4 +93,18 @@ namespace ART_OLC {
         if (needRestart) goto restart;
         return v;
     }
+
+    long long N48::size() {
+        long long size = 0;
+        for(int i = 0; i < 48; i++) {
+            size += N::size(children[i]);
+            size += sizeof(children[i]);
+        }
+        for(int i = 0; i < 256; i++) {
+            size += sizeof(childIndex[i]);
+        }
+        size += sizeof(children);
+        size += sizeof(childIndex);
+        return size;
+    }
 }
