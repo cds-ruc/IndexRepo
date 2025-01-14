@@ -12,6 +12,8 @@ enum class PageType : uint8_t { BTreeInner=1, BTreeLeaf=2 };
 
 static const uint64_t pageSize=4*1024;
 
+static std::atomic<std::size_t> innernodes_cnt;
+static std::atomic<std::size_t> leaves_cnt;
 struct OptLock {
   std::atomic<uint64_t> typeVersionLockObsolete{0b100};
 
@@ -145,6 +147,7 @@ struct BTreeLeaf : public BTreeLeafBase {
 
    BTreeLeaf* split(Key& sep) {
       BTreeLeaf* newLeaf = new BTreeLeaf();
+      leaves_cnt.fetch_add(1);
       newLeaf->count = count-(count/2);
       count = count-newLeaf->count;
       memcpy(newLeaf->keys, keys+count, sizeof(Key)*newLeaf->count);
@@ -200,6 +203,7 @@ struct BTreeInner : public BTreeInnerBase {
 
    BTreeInner* split(Key& sep) {
       BTreeInner* newInner=new BTreeInner();
+      innernodes_cnt.fetch_add(1);
       newInner->count=count-(count/2);
       count=count-newInner->count-1;
       sep=keys[count];
@@ -228,10 +232,12 @@ struct BTree {
 
    BTree() {
       root = new BTreeLeaf<Key,Value>();
+      leaves_cnt.fetch_add(1);
    }
 
    void makeRoot(Key k,NodeBase* leftChild,NodeBase* rightChild) {
       auto inner = new BTreeInner<Key>();
+      innernodes_cnt.fetch_add(1);
       inner->count = 1;
       inner->keys[0] = k;
       inner->children[0] = leftChild;
@@ -458,7 +464,11 @@ struct BTree {
     return count;
   }
 
-
+  std::size_t get_memory_usage() const 
+  {
+      return innernodes_cnt * sizeof(BTreeInner<Key>) +
+              leaves_cnt * sizeof(BTreeLeaf<Key, Value>);
+  }
 };
 
 }
