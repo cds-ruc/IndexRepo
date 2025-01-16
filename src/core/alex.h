@@ -108,6 +108,7 @@ class Alex {
   DerivedParams derived_params_;
 
   /* Counters, useful for benchmarking and profiling */
+#ifdef PROFILING
   struct Stats {
     int num_keys = 0;
     int num_model_nodes = 0;  // num model nodes
@@ -129,6 +130,7 @@ class Alex {
     double cost_computation_time = 0;
   };
   Stats stats_;
+#endif
 
   /* These are for research purposes, a user should not change these */
   struct ExperimentalParams {
@@ -1157,6 +1159,9 @@ class Alex {
   // Insert does not happen if duplicates are not allowed and duplicate is
   // found.
   std::pair<Iterator, bool> insert(const T& key, const P& payload) {
+#ifdef PROFILING
+    affected_items = 0;
+#endif
 #ifdef ROOT_PROFILING
     AlexNode<T, P>* last_root = root_node_;
 #endif
@@ -1299,6 +1304,11 @@ class Alex {
           << cur_root->model_.a_ << ","
           << cur_root->model_.b_ << ","
           << static_cast<model_node_type*>(cur_root)->num_children_ << std::endl;
+    }
+#endif
+#ifdef PROFILING
+    if(affected_items > 0){
+        affected_items_vec.push_back(affected_items);
     }
 #endif
     return {Iterator(leaf, insert_pos), true};
@@ -2743,6 +2753,28 @@ class Alex {
     out << "num_model_node_expansions" << "," << stats_.num_model_node_expansions << std::endl;
     out << "num_model_node_splits" << "," << stats_.num_model_node_splits << std::endl;
   }
+
+void print_smo_affected_items(std::string s) {
+    std::ofstream out("alex_" + s + "_smo_affected_items.log");
+    if (!out.is_open()) {
+        std::cerr << "Failed to open file." << std::endl;
+        return;
+    }
+    out << "portion,value" << std::endl;
+    if (affected_items_vec.size() == 0) {
+        out.close();
+        return;
+    }
+    std::sort(affected_items_vec.begin(), affected_items_vec.end());
+    out << "min" << "," << affected_items_vec[0] << std::endl;
+    out << "50" << "," << affected_items_vec[0.5 * affected_items_vec.size()] << std::endl;
+    out << "90" << "," << affected_items_vec[0.9 * affected_items_vec.size()] << std::endl;
+    out << "99" << "," << affected_items_vec[0.99 * affected_items_vec.size()] << std::endl;
+    out << "999" << "," << affected_items_vec[0.999 * affected_items_vec.size()] << std::endl;
+    out << "9999" << "," << affected_items_vec[0.9999 * affected_items_vec.size()] << std::endl;
+    out << "max" << "," << affected_items_vec[affected_items_vec.size() - 1] << std::endl;
+    out.close();
+}
 
   /*** Debugging ***/
 
