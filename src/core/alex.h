@@ -108,7 +108,6 @@ class Alex {
   DerivedParams derived_params_;
 
   /* Counters, useful for benchmarking and profiling */
-#ifdef PROFILING
   struct Stats {
     int num_keys = 0;
     int num_model_nodes = 0;  // num model nodes
@@ -130,7 +129,6 @@ class Alex {
     double cost_computation_time = 0;
   };
   Stats stats_;
-#endif
 
   /* These are for research purposes, a user should not change these */
   struct ExperimentalParams {
