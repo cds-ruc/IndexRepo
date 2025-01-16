@@ -2753,6 +2753,7 @@ class Alex {
   }
 
 void print_smo_affected_items(std::string s) {
+#ifdef PROFILING
     std::ofstream out("alex_" + s + "_smo_affected_items.log");
     if (!out.is_open()) {
         std::cerr << "Failed to open file." << std::endl;
@@ -2772,6 +2773,7 @@ void print_smo_affected_items(std::string s) {
     out << "9999" << "," << affected_items_vec[0.9999 * affected_items_vec.size()] << std::endl;
     out << "max" << "," << affected_items_vec[affected_items_vec.size() - 1] << std::endl;
     out.close();
+#endif
 }
 
   /*** Debugging ***/
