@@ -2772,6 +2772,67 @@ public:
   // Return a const reference to the current statistics
   const struct Stats &get_stats() const { return stats_; }
 
+  void print_size_stats(std::string s) const {
+    size_t inner_meta_size = 0;
+    size_t inner_cc_size = 0;
+    size_t inner_dup_size = 0;
+    size_t inner_ptr_size = 0;
+    size_t leaf_meta_size = 0;
+    size_t leaf_cc_size = 0;
+    size_t leaf_gap_size = 0;
+    size_t leaf_slot_size = 0;
+
+    std::queue<AlexNode<T, P>*> node_queue;
+    AlexNode<T, P>* cur;
+    node_queue.push(root_node_);
+    while (!node_queue.empty()) {
+      cur = node_queue.front();
+      node_queue.pop();
+      if (!cur->is_leaf_) { // inner node
+        auto node = static_cast<model_node_type*>(cur);
+        inner_meta_size += sizeof(model_node_type) - sizeof(uint32_t);
+        inner_cc_size += sizeof(uint32_t);
+        inner_ptr_size += sizeof(AlexNode<T, P>*);
+        // push children
+        node_queue.push(node->children_[0]);
+        for (int i = 1; i <= node->num_children_ - 1; i++) {
+          if (node->children_[i] != node->children_[i - 1]) {
+            node_queue.push(node->children_[i]);
+            inner_ptr_size += sizeof(AlexNode<T, P>*);
+          } else {
+            inner_dup_size += sizeof(AlexNode<T, P>*);
+          }
+        }
+      } else {  // leaf node
+        auto node = static_cast<data_node_type*>(cur);
+        leaf_meta_size += node->node_size() - sizeof(uint32_t) * 2 + node->bitmap_size_ * sizeof(uint64_t);
+        leaf_cc_size += sizeof(uint32_t) * 2;   // lock_ and link_lock_
+        for (int i = 0; i < node->data_capacity_; i++) {
+          if (node->check_exists(i)) {
+            leaf_slot_size += sizeof(T) + sizeof(P);
+          } else {
+            leaf_gap_size += sizeof(T) + sizeof(P);
+          }
+        }
+      }
+    }
+
+    std::ofstream out("alexolc_" + s + "_size_stats.log");
+    if (!out.is_open()) {
+        std::cerr << "Failed to open file." << std::endl;
+        return;
+    }
+    out << "type,size" << std::endl;
+    out << "inner_meta_size," << inner_meta_size << std::endl;
+    out << "inner_cc_size," << inner_cc_size << std::endl;
+    out << "inner_dup_size," << inner_dup_size << std::endl;
+    out << "inner_ptr_size," << inner_ptr_size << std::endl;
+    out << "leaf_meta_size," << leaf_meta_size << std::endl;
+    out << "leaf_cc_size," << leaf_cc_size << std::endl;
+    out << "leaf_gap_size," << leaf_gap_size << std::endl;
+    out << "leaf_slot_size," << leaf_slot_size << std::endl;
+  }
+
   /*** Debugging ***/
 
 public:
