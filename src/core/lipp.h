@@ -564,12 +564,15 @@ public:
                     // print stats
                     T* keys = new T[node->items[i].comp.child->size];
                     get_subtree_keys(node->items[i].comp.child, keys);
-                    out_file << keys[0] << "," << node->items[i].comp.child->size << "," << depth << std::endl;
+                    if (depth == 1)
+                        out_file << keys[0] << "," << node->items[i].comp.child->size << "," << depth << std::endl;
                     delete []keys;
                 } else if (BITMAP_GET(node->none_bitmap, i) != 1) {
-                    out_file << node->items[i].comp.data.key << "," << 1 << "," << depth << std::endl;
+                    if (depth == 1)
+                        out_file << node->items[i].comp.data.key << "," << 1 << "," << depth << std::endl;
                 } else {
-                    out_file << 0 << "," << 0 << "," << depth << std::endl;
+                    if (depth == 1)
+                        out_file << 0 << "," << 0 << "," << depth << std::endl;
                 }
             }
         }
