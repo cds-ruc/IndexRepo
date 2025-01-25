@@ -31,7 +31,10 @@
 #define ALEX_USE_LZCNT 1
 
 namespace alex {
-
+#ifdef PROFILING
+static inline long long affected_items=0;
+std::vector<long long> affected_items_vec;
+#endif
 // A parent class for both types of ALEX nodes
 template <class T, class P>
 class AlexNode {
@@ -101,6 +104,9 @@ class AlexModelNode : public AlexNode<T, P> {
         AlexNode<T, P>*[other.num_children_];
     std::copy(other.children_, other.children_ + other.num_children_,
               children_);
+#ifdef PROFILING
+    affected_items+=other.num_children_;
+#endif
   }
 
   // Given a key, traverses to the child node responsible for that key
@@ -121,6 +127,9 @@ class AlexModelNode : public AlexNode<T, P> {
     int num_new_children = num_children_ * expansion_factor;
     auto new_children = new (pointer_allocator().allocate(num_new_children))
         AlexNode<T, P>*[num_new_children];
+#ifdef PROFILING
+    affected_items+=num_new_children;
+#endif
     int cur = 0;
     while (cur < num_children_) {
       AlexNode<T, P>* cur_child = children_[cur];
@@ -445,6 +454,9 @@ class AlexDataNode : public AlexNode<T, P> {
         V[other.data_capacity_];
     std::copy(other.data_slots_, other.data_slots_ + other.data_capacity_,
               data_slots_);
+#endif
+#ifdef PROFILING
+    affected_items += other.data_capacity_;
 #endif
     bitmap_ = new (bitmap_allocator().allocate(other.bitmap_size_))
         uint64_t[other.bitmap_size_];
@@ -1151,6 +1163,9 @@ class AlexDataNode : public AlexNode<T, P> {
     data_slots_ =
         new (value_allocator().allocate(data_capacity_)) V[data_capacity];
 #endif
+#ifdef PROFILING
+    affected_items += data_capacity_;
+#endif
   }
 
   // Assumes pretrained_model is trained on dense array of keys
@@ -1758,7 +1773,9 @@ class AlexDataNode : public AlexNode<T, P> {
     V* new_data_slots = new (value_allocator().allocate(new_data_capacity))
         V[new_data_capacity];
 #endif
-
+#ifdef PROFILING
+    affected_items += new_data_capacity;
+#endif
     // Retrain model if the number of keys is sufficiently small (under 50)
     if (num_keys_ < 50 || force_retrain) {
       const_iterator_type it(this, 0);

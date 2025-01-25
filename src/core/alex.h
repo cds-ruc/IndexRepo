@@ -1168,6 +1168,9 @@ class Alex {
   // Insert does not happen if duplicates are not allowed and duplicate is
   // found.
   std::pair<Iterator, bool> insert(const T& key, const P& payload) {
+#ifdef PROFILING
+    affected_items = 0;
+#endif
 #ifdef ROOT_PROFILING
     AlexNode<T, P>* last_root = root_node_;
 #endif
@@ -1321,6 +1324,11 @@ class Alex {
     //   out.write(reinterpret_cast<const char*>(&cur_root->model_.b_), sizeof(cur_root->model_.b_));
     //   out.write(reinterpret_cast<const char*>(&static_cast<model_node_type*>(cur_root)->num_children_), sizeof(static_cast<model_node_type*>(cur_root)->num_children_));
     // }
+#endif
+#ifdef PROFILING
+    if(affected_items > 0){
+        affected_items_vec.push_back(affected_items);
+    }
 #endif
     return {Iterator(leaf, insert_pos), true};
   }
@@ -2511,6 +2519,46 @@ class Alex {
     }
     out_dist.close();
   }
+  // get tree depth
+  size_t get_alex_depth() const {
+    if (root_node_ == nullptr) {
+      return 0;
+    }
+    
+    size_t max_depth = 0;
+    std::stack<AlexNode<T, P>*> node_stack;
+    std::stack<int> d;
+    AlexNode<T, P>* cur;
+    node_stack.push(root_node_);
+    d.push(1);
+
+    while (!node_stack.empty()) {
+      cur = node_stack.top();
+      node_stack.pop();
+      int depth = d.top();
+      d.pop();
+
+      if (!cur->is_leaf_) { // inner node
+        auto node = static_cast<model_node_type*>(cur);
+        // push children
+        node_stack.push(node->children_[node->num_children_ - 1]);
+        d.push(depth + 1);
+        for (int i = node->num_children_ - 2; i >= 0; i--) {
+          if (node->children_[i] != node->children_[i + 1]) {
+            node_stack.push(node->children_[i]);
+            d.push(depth + 1);
+          }
+        }
+      } else {  // leaf node
+        auto node = static_cast<data_node_type*>(cur);
+        // auto node_level = node->level_ + 1;   // level starts from 0 (root)
+        // assert(node_level == depth);
+        auto node_level = depth;
+        max_depth = max_depth > node_level ? max_depth : node_level;
+      }
+    }
+    return max_depth;
+  }
 
   void print_model_stats(std::string s) const {
     std::ofstream out_file("alex_" + s + "_model_stats.log");
@@ -2969,6 +3017,30 @@ class Alex {
 
     out.close();
   }
+
+void print_smo_affected_items(std::string s) {
+#ifdef PROFILING
+    std::ofstream out("alex_" + s + "_smo_affected_items.log");
+    if (!out.is_open()) {
+        std::cerr << "Failed to open file." << std::endl;
+        return;
+    }
+    out << "portion,value" << std::endl;
+    if (affected_items_vec.size() == 0) {
+        out.close();
+        return;
+    }
+    std::sort(affected_items_vec.begin(), affected_items_vec.end());
+    out << "min" << "," << affected_items_vec[0] << std::endl;
+    out << "50" << "," << affected_items_vec[0.5 * affected_items_vec.size()] << std::endl;
+    out << "90" << "," << affected_items_vec[0.9 * affected_items_vec.size()] << std::endl;
+    out << "99" << "," << affected_items_vec[0.99 * affected_items_vec.size()] << std::endl;
+    out << "999" << "," << affected_items_vec[0.999 * affected_items_vec.size()] << std::endl;
+    out << "9999" << "," << affected_items_vec[0.9999 * affected_items_vec.size()] << std::endl;
+    out << "max" << "," << affected_items_vec[affected_items_vec.size() - 1] << std::endl;
+    out.close();
+#endif
+}
 
   /*** Debugging ***/
 
