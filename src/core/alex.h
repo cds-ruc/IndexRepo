@@ -40,6 +40,7 @@
 #include "alex_base.h"
 #include "alex_fanout_tree.h"
 #include "alex_nodes.h"
+#include "omp.h"
 
 // Whether we account for floating-point precision issues when traversing down
 // ALEX.
@@ -687,6 +688,7 @@ class Alex {
     link_all_data_nodes();
 
 #ifdef ROOT_PROFILING
+    // csv format
     AlexNode<T, P>* cur_root = root_node_;
     if (cur_root != nullptr) {
       std::ifstream in("alex_insert_root.log");
@@ -700,6 +702,15 @@ class Alex {
           << cur_root->model_.b_ << ","
           << static_cast<model_node_type*>(cur_root)->num_children_ << std::endl;
     }
+    // binary format
+    // AlexNode<T, P>* cur_root = root_node_;
+    // if (cur_root != nullptr) {
+    //   std::ofstream out("alex_insert_root.log", std::ios::binary | std::ios::app);
+    //   out.write(reinterpret_cast<const char*>(&stats_.num_inserts), sizeof(stats_.num_inserts));
+    //   out.write(reinterpret_cast<const char*>(&cur_root->model_.a_), sizeof(cur_root->model_.a_));
+    //   out.write(reinterpret_cast<const char*>(&cur_root->model_.b_), sizeof(cur_root->model_.b_));
+    //   out.write(reinterpret_cast<const char*>(&static_cast<model_node_type*>(cur_root)->num_children_), sizeof(static_cast<model_node_type*>(cur_root)->num_children_));
+    // }
 #endif
   }
 
@@ -1287,6 +1298,7 @@ class Alex {
     stats_.num_inserts++;
     stats_.num_keys++;
 #ifdef ROOT_PROFILING
+    // csv format
     AlexNode<T, P>* cur_root = root_node_;
     if (cur_root != last_root) {
       std::ifstream in("alex_insert_root.log");
@@ -1300,6 +1312,15 @@ class Alex {
           << cur_root->model_.b_ << ","
           << static_cast<model_node_type*>(cur_root)->num_children_ << std::endl;
     }
+    // binary format
+    // AlexNode<T, P>* cur_root = root_node_;
+    // if (cur_root != last_root) {
+    //   std::ofstream out("alex_insert_root.log", std::ios::binary | std::ios::app);
+    //   out.write(reinterpret_cast<const char*>(&stats_.num_inserts), sizeof(stats_.num_inserts));
+    //   out.write(reinterpret_cast<const char*>(&cur_root->model_.a_), sizeof(cur_root->model_.a_));
+    //   out.write(reinterpret_cast<const char*>(&cur_root->model_.b_), sizeof(cur_root->model_.b_));
+    //   out.write(reinterpret_cast<const char*>(&static_cast<model_node_type*>(cur_root)->num_children_), sizeof(static_cast<model_node_type*>(cur_root)->num_children_));
+    // }
 #endif
     return {Iterator(leaf, insert_pos), true};
   }
@@ -2572,11 +2593,210 @@ class Alex {
         }
       } else {  // leaf node
         auto node = static_cast<data_node_type*>(cur);
-        out_file << node->first_key() << "," << node->num_keys_ << ","  << depth << std::endl;
+        // out_file << node->first_key() << "," << node->num_keys_ << ","  << depth << std::endl;
       }
     }
-    
     out_file.close();
+  }
+
+  void print_information_gain(std::string s) {
+    std::unordered_map<int, std::vector<int>> hist;
+    std::unordered_map<int, std::vector<int>> leaf_hist;
+    std::ofstream hist_out_file("alex_" + s + "_hist.log");
+    if (!hist_out_file.is_open()) {
+        std::cerr << "Failed to open file." << std::endl;
+        return ;
+    }
+    hist_out_file << "level,information_gain" << std::endl;
+
+    if (root_node_ == nullptr) {
+      return ;
+    }
+
+    std::queue<AlexNode<T, P>*> node_queue;
+    std::queue<int> depth_queue;
+    AlexNode<T, P>* cur;
+    node_queue.push(root_node_);
+    depth_queue.push(1);
+    while (!node_queue.empty()) {
+      cur = node_queue.front();
+      node_queue.pop();
+      int depth = depth_queue.front();
+      depth_queue.pop();
+      if (!cur->is_leaf_) { // inner node
+        auto node = static_cast<model_node_type*>(cur);
+        // push children
+        node_queue.push(node->children_[0]);
+        depth_queue.push(depth + 1);
+        T min_key = 0;
+        int size = 0;
+        get_subtree_stats(node->children_[0], min_key, size);
+        hist[depth + 1].push_back(size);
+        for (int i = 1; i <= node->num_children_ - 1; i++) {
+          if (node->children_[i] != node->children_[i - 1]) {
+            node_queue.push(node->children_[i]);
+            depth_queue.push(depth + 1);
+            size = 0;
+            get_subtree_stats(node->children_[i], min_key, size);
+            hist[depth + 1].push_back(size);
+          }
+        }
+      } else {  // leaf node
+        auto node = static_cast<data_node_type*>(cur);
+        leaf_hist[depth].push_back(node->num_keys_);
+        
+        // leaf slot
+        // std::vector<T> cur_leaf_keys;
+        // std::vector<int> cur_leaf_slots(node->data_capacity_, 0);
+        // ConstIterator it(node, 0);
+        // while (it.cur_leaf_ == node) {
+        //   cur_leaf_keys.push_back(it.key());
+        //   it++;
+        // }
+        // for (int i = 0; i < cur_leaf_keys.size(); i++) {
+        //   int pos = node->predict_position(cur_leaf_keys[i]);
+        //   cur_leaf_slots[pos]++;
+        // }
+        // for (int i = 0; i < cur_leaf_slots.size(); i++) {
+        //   if (cur_leaf_slots[i] > 0) {
+        //     hist[-1].push_back(cur_leaf_slots[i]);
+        //   }
+        // }
+      }
+    }
+
+    hist_out_file << "1,0" << std::endl;
+    for (auto it = hist.begin(); it != hist.end(); it++) {
+      std::vector<int> v = it->second;
+      for (auto it2 = leaf_hist.begin(); it2 != leaf_hist.end(); it2++) {
+        if (it2->first < it->first) {
+          v.insert(v.end(), it2->second.begin(), it2->second.end());
+        }
+      }
+      if (std::accumulate(v.begin(), v.end(), 0) != 200000000) {
+        std::cout << "level: " << it->first << std::endl;
+        std::cout << "hist sum error: " << std::accumulate(v.begin(), v.end(), 0) << std::endl;
+        exit(-1);
+      }
+      double information_gain = calculate_information_gain(v, 200000000);
+      hist_out_file << it->first << "," << information_gain << std::endl;
+    }
+    hist_out_file.close();
+  }
+
+  double calculate_information_gain(const std::vector<int> &bucket_count, size_t num_elements) {
+    double original_entropy = log2(num_elements); // each key is a bucket
+    double after_entropy = 0.0;
+    int non_empty_buckets = 0;
+    const size_t num_buckets = bucket_count.size();
+  #pragma omp parallel for reduction(+ : after_entropy)
+    for (size_t i = 0; i < num_buckets; ++i) {
+      if (bucket_count[i] > 0) {
+        double bucket_entropy = log2(bucket_count[i]);
+        after_entropy +=
+            ((double)bucket_count[i] / num_elements) * bucket_entropy;
+      }
+    }
+    return original_entropy - after_entropy;
+  }
+
+  void print_node_size(std::string s) {
+    std::ofstream out_file("alex_" + s + "_node_size.log");
+    if (!out_file.is_open()) {
+        std::cerr << "Failed to open file." << std::endl;
+        return ;
+    }
+    out_file << "num_slots,size_bytes,level" << std::endl;
+
+    if (root_node_ == nullptr) {
+      return ;
+    }
+
+    std::queue<AlexNode<T, P>*> node_queue;
+    std::queue<int> depth_queue;
+    AlexNode<T, P>* cur;
+    node_queue.push(root_node_);
+    depth_queue.push(1);
+    while (!node_queue.empty()) {
+      cur = node_queue.front();
+      node_queue.pop();
+      int depth = depth_queue.front();
+      depth_queue.pop();
+      if (!cur->is_leaf_) { // inner node
+        auto node = static_cast<model_node_type*>(cur);
+        out_file << node->num_children_ << "," << node->node_size() << "," << depth << std::endl;
+        // push children
+        node_queue.push(node->children_[0]);
+        depth_queue.push(depth + 1);
+        for (int i = 1; i <= node->num_children_ - 1; i++) {
+          if (node->children_[i] != node->children_[i - 1]) {
+            node_queue.push(node->children_[i]);
+            depth_queue.push(depth + 1);
+          }
+        }
+      } else {  // leaf node
+        auto node = static_cast<data_node_type*>(cur);
+        out_file << node->num_keys_ << "," << node->node_size() + node->data_size() << ","  << depth << std::endl;
+      }
+    }
+
+    out_file.close();
+  }
+
+  void print_size_stats(std::string s) const {
+    size_t inner_meta_size = 0;
+    size_t inner_dup_size = 0;
+    size_t inner_ptr_size = 0;
+    size_t leaf_meta_size = 0;
+    size_t leaf_gap_size = 0;
+    size_t leaf_slot_size = 0;
+
+    std::queue<AlexNode<T, P>*> node_queue;
+    AlexNode<T, P>* cur;
+    node_queue.push(root_node_);
+    while (!node_queue.empty()) {
+      cur = node_queue.front();
+      node_queue.pop();
+      if (!cur->is_leaf_) { // inner node
+        auto node = static_cast<model_node_type*>(cur);
+        inner_meta_size += sizeof(model_node_type);
+        inner_ptr_size += sizeof(AlexNode<T, P>*);
+        // push children
+        node_queue.push(node->children_[0]);
+        for (int i = 1; i <= node->num_children_ - 1; i++) {
+          if (node->children_[i] != node->children_[i - 1]) {
+            node_queue.push(node->children_[i]);
+            inner_ptr_size += sizeof(AlexNode<T, P>*);
+          } else {
+            inner_dup_size += sizeof(AlexNode<T, P>*);
+          }
+        }
+      } else {  // leaf node
+        auto node = static_cast<data_node_type*>(cur);
+        leaf_meta_size += node->node_size() + node->bitmap_size_ * sizeof(uint64_t);
+        for (int i = 0; i < node->data_capacity_; i++) {
+          if (node->check_exists(i)) {
+            leaf_slot_size += sizeof(T) + sizeof(P);
+          } else {
+            leaf_gap_size += sizeof(T) + sizeof(P);
+          }
+        }
+      }
+    }
+
+    std::ofstream out("alex_" + s + "_size_stats.log");
+    if (!out.is_open()) {
+        std::cerr << "Failed to open file." << std::endl;
+        return;
+    }
+    out << "type,size" << std::endl;
+    out << "inner_meta_size," << inner_meta_size << std::endl;
+    out << "inner_dup_size," << inner_dup_size << std::endl;
+    out << "inner_ptr_size," << inner_ptr_size << std::endl;
+    out << "leaf_meta_size," << leaf_meta_size << std::endl;
+    out << "leaf_gap_size," << leaf_gap_size << std::endl;
+    out << "leaf_slot_size," << leaf_slot_size << std::endl;
+    out.close();
   }
 
   void print_level_model_stats(std::string s) const {
@@ -2702,6 +2922,52 @@ class Alex {
     out << "num_sideways_splits" << "," << stats_.num_sideways_splits << std::endl;
     out << "num_model_node_expansions" << "," << stats_.num_model_node_expansions << std::endl;
     out << "num_model_node_splits" << "," << stats_.num_model_node_splits << std::endl;
+    out.close();
+  }
+
+  void print_memory_exception(std::string s) {
+    std::ofstream out("alex_" + s + "_memory_exception.log");
+    if (!out.is_open()) {
+        std::cerr << "Failed to open file." << std::endl;
+        return;
+    }
+    // out << "first_key,last_key,meta_size,gap_size,slot_size" << std::endl;
+    out << "num_keys,node_size" << std::endl;
+
+    std::queue<AlexNode<T, P>*> node_queue;
+    AlexNode<T, P>* cur;
+    node_queue.push(root_node_);
+    while (!node_queue.empty()) {
+      cur = node_queue.front();
+      node_queue.pop();
+      if (!cur->is_leaf_) { // inner node
+        auto node = static_cast<model_node_type*>(cur);
+        // push children
+        node_queue.push(node->children_[0]);
+        for (int i = 1; i <= node->num_children_ - 1; i++) {
+          if (node->children_[i] != node->children_[i - 1]) {
+            node_queue.push(node->children_[i]);
+          }
+        }
+      } else {  // leaf node
+        size_t leaf_meta_size = 0;
+        size_t leaf_gap_size = 0;
+        size_t leaf_slot_size = 0;
+        auto node = static_cast<data_node_type*>(cur);
+        leaf_meta_size += node->node_size() + node->bitmap_size_ * sizeof(uint64_t);
+        for (int i = 0; i < node->data_capacity_; i++) {
+          if (node->check_exists(i)) {
+            leaf_slot_size += sizeof(T) + sizeof(P);
+          } else {
+            leaf_gap_size += sizeof(T) + sizeof(P);
+          }
+        }
+        // out << node->first_key() << "," << node->last_key() << "," << leaf_meta_size << "," << leaf_gap_size << "," << leaf_slot_size << std::endl;
+        out << node->num_keys_ << "," << node->node_size() + node->data_size() << std::endl;
+      }
+    }
+
+    out.close();
   }
 
   /*** Debugging ***/
