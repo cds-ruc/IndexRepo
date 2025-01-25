@@ -971,6 +971,47 @@ public:
       return std::tuple<long, double, long>(max_depth, double(sum_depth) / double(sum_nodes), sum_nodes);
     }
 
+    void print_size_stats(std::string str) const {
+      std::stack < Node * > s;
+      s.push(root);
+
+      size_t meta_size = 0;
+      size_t cc_size = 0;
+      size_t empty_slot_size = 0;
+      size_t data_slot_size = 0;
+      size_t node_slot_size = 0;
+      while (!s.empty()) {
+        Node *node = s.top();
+        s.pop();
+        meta_size += sizeof(*node);
+        meta_size += sizeof(uint8_t) * node->num_items;
+
+        for (int i = 0; i < node->num_items; i++) {
+          cc_size += sizeof(OptLock);
+          if (node->items[i].entry_type == 1) {
+            s.push(node->items[i].comp.child);
+            node_slot_size += sizeof(Item) - sizeof(OptLock) - sizeof(uint8_t);
+          } else if (node->items[i].entry_type == 2) {
+            data_slot_size += sizeof(Item) - sizeof(OptLock) - sizeof(uint8_t);
+          } else {
+            empty_slot_size += sizeof(Item) - sizeof(OptLock) - sizeof(uint8_t);
+          }
+        }
+      }
+
+      std::ofstream out("sali_" + str + "_size_stats.log");
+      if (!out.is_open()) {
+        std::cerr << "Failed to open file." << std::endl;
+        return;
+      }
+      out << "type,size" << std::endl;
+      out << "meta" << "," << meta_size << std::endl;
+      out << "cc" << "," << cc_size << std::endl;
+      out << "empty_slot" << "," << empty_slot_size << std::endl;
+      out << "data_slot" << "," << data_slot_size << std::endl;
+      out << "node_slot" << "," << node_slot_size << std::endl;
+    }
+
 private:
     struct Node;
     struct Item : OptLock {
