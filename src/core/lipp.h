@@ -11,6 +11,7 @@
 #include <vector>
 #include <cstring>
 #include <sstream>
+#include "omp.h"
 
 typedef uint8_t bitmap_t;
 #define BITMAP_WIDTH (sizeof(bitmap_t) * 8)
@@ -74,6 +75,7 @@ class LIPP
         #endif
         #ifdef PROFILING
         int num_rebuilds = 0;
+        std::vector<size_t> rebuilds;
         #endif
         #ifdef ROOT_PROFILING
         int num_inserts = 0;
@@ -120,6 +122,7 @@ public:
         bool ok = true;
         root = insert_tree(root, key, value, &ok);
 #ifdef ROOT_PROFILING
+        // csv format
         if (ok) {
             stats.num_inserts ++;
         }
@@ -136,6 +139,18 @@ public:
             << cur_root->model.b << ","
             << cur_root->num_items << std::endl;
         }
+        // binary format
+        // if (ok) {
+        //     stats.num_inserts ++;
+        // }
+        // Node* cur_root = root;
+        // if (cur_root != last_root) {
+        // std::ofstream out("lipp_insert_root.log", std::ios::binary | std::ios::app);
+        // out.write(reinterpret_cast<char*>(&stats.num_inserts), sizeof(stats.num_inserts));
+        // out.write(reinterpret_cast<char*>(&cur_root->model.a), sizeof(cur_root->model.a));
+        // out.write(reinterpret_cast<char*>(&cur_root->model.b), sizeof(cur_root->model.b));
+        // out.write(reinterpret_cast<char*>(&cur_root->num_items), sizeof(cur_root->num_items));
+        // }
 #endif
         return ok;
     }
@@ -210,6 +225,7 @@ public:
         delete[] values;
         
         #ifdef ROOT_PROFILING
+        // csv format
         Node* cur_root = root;
         if (cur_root != nullptr) {
         std::ifstream in("lipp_insert_root.log");
@@ -223,6 +239,15 @@ public:
             << cur_root->model.b << ","
             << cur_root->num_items << std::endl;
         }
+        // binary format
+        // Node* cur_root = root;
+        // if (cur_root != nullptr) {
+        // std::ofstream out("lipp_insert_root.log", std::ios::binary | std::ios::app);
+        // out.write(reinterpret_cast<char*>(&stats.num_inserts), sizeof(stats.num_inserts));
+        // out.write(reinterpret_cast<char*>(&cur_root->model.a), sizeof(cur_root->model.a));
+        // out.write(reinterpret_cast<char*>(&cur_root->model.b), sizeof(cur_root->model.b));
+        // out.write(reinterpret_cast<char*>(&cur_root->num_items), sizeof(cur_root->num_items));
+        // }
         #endif
     }
 
@@ -551,6 +576,79 @@ public:
 
         out_file.close();
     }
+    void print_information_gain(std::string str) {
+        std::unordered_map<int, std::vector<int>> hist;
+        std::unordered_map<int, std::vector<int>> leaf_hist;
+        std::ofstream hist_out_file("lipp_" + str + "_hist.log");
+        if (!hist_out_file.is_open()) {
+            std::cerr << "Failed to open file." << std::endl;
+            return ;
+        }
+        hist_out_file << "level,information_gain" << std::endl;
+
+        if (root == nullptr) {
+            return ;
+        }
+
+        std::queue<Node*> s;
+        std::queue<int> d;
+        s.push(root);
+        d.push(1);
+
+        while (!s.empty()) {
+            Node* node = s.front(); s.pop();
+            int depth = d.front(); d.pop();
+            for (int i = 0; i < node->num_items; i ++) {
+                if (BITMAP_GET(node->child_bitmap, i) == 1) {
+                    s.push(node->items[i].comp.child);
+                    d.push(depth + 1);
+                    // print stats
+                    T* keys = new T[node->items[i].comp.child->size];
+                    get_subtree_keys(node->items[i].comp.child, keys);
+                    hist[depth + 1].push_back(node->items[i].comp.child->size);
+                    delete []keys;
+                } else if (BITMAP_GET(node->none_bitmap, i) != 1) {
+                    hist[depth + 1].push_back(1);
+                    leaf_hist[depth + 1].push_back(1);
+                } else {
+                    // hist[depth].push_back(0);
+                }
+            }
+        }
+
+        hist_out_file << "1,0" << std::endl;
+        for (auto it = hist.begin(); it != hist.end(); it++) {
+            std::vector<int> v = it->second;
+            for (auto it2 = leaf_hist.begin(); it2 != leaf_hist.end(); it2++) {
+                if (it2->first < it->first) {
+                    v.insert(v.end(), it2->second.begin(), it2->second.end());
+                }
+            }
+            if (std::accumulate(v.begin(), v.end(), 0) != 200000000) {
+                std::cout << "level: " << it->first << std::endl;
+                std::cout << "hist sum error: " << std::accumulate(v.begin(), v.end(), 0) << std::endl;
+                exit(-1);
+            }
+            double information_gain = calculate_information_gain(v, 200000000);
+            hist_out_file << it->first << "," << information_gain << std::endl;
+        }
+        hist_out_file.close();
+    }
+    double calculate_information_gain(const std::vector<int> &bucket_count, size_t num_elements) {
+        double original_entropy = log2(num_elements); // each key is a bucket
+        double after_entropy = 0.0;
+        int non_empty_buckets = 0;
+        const size_t num_buckets = bucket_count.size();
+    #pragma omp parallel for reduction(+ : after_entropy)
+        for (size_t i = 0; i < num_buckets; ++i) {
+            if (bucket_count[i] > 0) {
+                double bucket_entropy = log2(bucket_count[i]);
+                after_entropy +=
+                    ((double)bucket_count[i] / num_elements) * bucket_entropy;
+            }
+        }
+        return original_entropy - after_entropy;
+    }
     void print_smo_stats(std::string s) {
         std::ofstream out("lipp_" + s + "_smo_stats.log");
         if (!out.is_open()) {
@@ -559,6 +657,19 @@ public:
         }
         out << "smo,count" << std::endl;
         out << "num_rebuilds" << "," << stats.num_rebuilds << std::endl;
+        if (stats.rebuilds.size() == 0) {
+            out.close();
+            return;
+        }
+        std::sort(stats.rebuilds.begin(), stats.rebuilds.end());
+        out << "min" << "," << stats.rebuilds[0] << std::endl;
+        out << "50" << "," << stats.rebuilds[0.5 * stats.rebuilds.size()] << std::endl;
+        out << "90" << "," << stats.rebuilds[0.9 * stats.rebuilds.size()] << std::endl;
+        out << "99" << "," << stats.rebuilds[0.99 * stats.rebuilds.size()] << std::endl;
+        out << "999" << "," << stats.rebuilds[0.999 * stats.rebuilds.size()] << std::endl;
+        out << "9999" << "," << stats.rebuilds[0.9999 * stats.rebuilds.size()] << std::endl;
+        out << "max" << "," << stats.rebuilds[stats.rebuilds.size() - 1] << std::endl;
+        out.close();
     }
     void verify() const {
         std::stack<Node*> s;
@@ -631,6 +742,76 @@ public:
             }
         }
         return size;
+    }
+    void print_node_size(std::string str) const {
+        std::ofstream out_file("lipp_" + str + "_node_size.log");
+        if (!out_file.is_open()) {
+            std::cerr << "Failed to open file." << std::endl;
+            return ;
+        }
+        out_file << "num_slots,size_bytes,level" << std::endl;
+
+        std::stack<Node*> s;
+        std::stack<int> d;
+        s.push(root);
+        d.push(1);
+        while (!s.empty()) {
+            Node* node = s.top(); s.pop();
+            int depth = d.top(); d.pop();
+            size_t size = 0;
+            size += sizeof(*node);
+            size += sizeof(*(node->none_bitmap));
+            size += sizeof(*(node->child_bitmap));
+            size += node->num_items * sizeof(Item);
+            out_file << node->num_items << "," << size << "," << depth << std::endl;
+
+            for (int i = 0; i < node->num_items; i ++) {
+                if (BITMAP_GET(node->child_bitmap, i) == 1) {
+                    s.push(node->items[i].comp.child);
+                    d.push(depth + 1);
+                }
+            }
+        }
+        out_file.close();
+    }
+    void print_size_stats(std::string str) const {
+        std::stack < Node * > s;
+        s.push(root);
+
+        size_t meta_size = 0;
+        size_t empty_slot_size = 0;
+        size_t data_slot_size = 0;
+        size_t node_slot_size = 0;
+        while (!s.empty()) {
+            Node *node = s.top();
+            s.pop();
+            meta_size += sizeof(*node);
+            meta_size += sizeof(*(node->none_bitmap));
+            meta_size += sizeof(*(node->child_bitmap));
+
+            for (int i = 0; i < node->num_items; i++) {
+                if (BITMAP_GET(node->child_bitmap, i) == 1) {
+                    s.push(node->items[i].comp.child);
+                    node_slot_size += sizeof(Item);
+                } else if (BITMAP_GET(node->none_bitmap, i) != 1) {
+                    data_slot_size += sizeof(Item);
+                } else {
+                    empty_slot_size += sizeof(Item);
+                }
+            }
+        }
+
+        std::ofstream out("lipp_" + str + "_size_stats.log");
+        if (!out.is_open()) {
+            std::cerr << "Failed to open file." << std::endl;
+            return;
+        }
+        out << "type,size" << std::endl;
+        out << "meta" << "," << meta_size << std::endl;
+        out << "empty_slot" << "," << empty_slot_size << std::endl;
+        out << "data_slot" << "," << data_slot_size << std::endl;
+        out << "node_slot" << "," << node_slot_size << std::endl;
+        out.close();
     }
 
 private:
@@ -1176,6 +1357,7 @@ private:
             if (need_rebuild) {
                 #ifdef PROFILING
                 stats.num_rebuilds++;
+                stats.rebuilds.push_back(node->size);
                 #endif
                 const int ESIZE = node->size;
                 T* keys = new T[ESIZE];
